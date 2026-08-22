@@ -17,8 +17,8 @@ impl MigrationTrait for Migration {
                     .as_enum(ItemStatus::Enum)
                     .values([
                         ItemStatus::Available,
+                        ItemStatus::Pending,
                         ItemStatus::Sold,
-                        ItemStatus::Reserved,
                         ItemStatus::Removed,
                     ])
                     .to_owned(),
@@ -31,22 +31,44 @@ impl MigrationTrait for Migration {
                     .table(Items::Table)
                     .if_not_exists()
                     .col(pk_auto(Items::Id))
-                    .col(text(Items::Seller).not_null())
-                    .col(text(Items::Material))
-                    .col(integer(Items::Amount))
-                    .col(text(Items::Price))
-                    .col(text(Items::Source))
-                    .col(text(Items::Origin))
+                    .col(text(Items::Seller))
+                    .col(text_null(Items::Material))
+                    .col(integer_null(Items::Amount))
+                    .col(text_null(Items::Price))
+                    .col(text_null(Items::Source))
+                    .col(text_null(Items::Origin))
                     .col(
                         enumeration(Items::Status, ItemStatus::Enum, [
                             ItemStatus::Available,
+                            ItemStatus::Pending,
                             ItemStatus::Sold,
-                            ItemStatus::Reserved,
                             ItemStatus::Removed,
                         ])
                             .not_null()
                             .default(ItemStatus::Available.to_string()),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        // Indexes per spec §5.1
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_items_status")
+                    .table(Items::Table)
+                    .col(Items::Status)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_items_seller")
+                    .table(Items::Table)
+                    .col(Items::Seller)
                     .to_owned(),
             )
             .await
@@ -81,10 +103,10 @@ enum ItemStatus {
     Enum,
     #[sea_orm(iden = "AVAILABLE")]
     Available,
+    #[sea_orm(iden = "PENDING")]
+    Pending,
     #[sea_orm(iden = "SOLD")]
     Sold,
-    #[sea_orm(iden = "RESERVED")]
-    Reserved,
     #[sea_orm(iden = "REMOVED")]
     Removed,
 }

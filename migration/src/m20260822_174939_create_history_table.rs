@@ -10,28 +10,37 @@ impl MigrationName for Migration {
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
-    async fn up(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
-        // Replace the sample below with your own migration scripts
-         _manager
-             .create_table(
-                 Table::create()
-                     .table(History::Table)
-                     .if_not_exists()
-                     .col(pk_auto(History::Id))
-                     .col(text(History::Seller).not_null())
-                     .col(text(History::Buyer).not_null())
-                     .col(text(History::Material).not_null())
-                     .col(text(History::Price).not_null())
-                     .col(integer(History::Amount).not_null())
-                     .col(text(History::Source).not_null())
-                     .col(text(History::Origin).not_null())
-                 .to_owned(),
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+              .create_table(
+                  Table::create()
+                      .table(History::Table)
+                      .if_not_exists()
+                      .col(pk_auto(History::Id))
+                      .col(text_null(History::Seller))
+                      .col(text_null(History::Buyer))
+                      .col(text_null(History::Material))
+                      .col(text_null(History::Price))
+                      .col(integer_null(History::Amount))
+                      .col(text_null(History::Source))
+                      .col(text_null(History::Origin))
+                  .to_owned(),
+              ).await?;
 
-             ).await
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_history_buyer")
+                    .table(History::Table)
+                    .col(History::Buyer)
+                    .to_owned(),
+            )
+            .await
     }
 
-    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
-        _manager
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
             .drop_table(Table::drop().table(History::Table).to_owned()).await
     }
 }

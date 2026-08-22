@@ -1,4 +1,8 @@
 pub mod controllers;
+pub mod database;
+pub mod entities;
+pub mod services;
+pub mod utils;
 
 use actix_web::{App, HttpServer};
 use crate::controllers::auth::auth_scope;
