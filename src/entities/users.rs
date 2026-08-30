@@ -9,6 +9,7 @@ pub struct Model {
     pub balance: f64,
     pub password_hash: Option<String>,
     pub created_at: Option<i64>,
+    pub banned: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
