@@ -2,6 +2,7 @@ pub mod auth;
 pub mod balance;
 pub mod stats;
 pub mod items;
+pub mod list;
 
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};
 use serde_json::json;

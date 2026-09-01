@@ -1,6 +1,11 @@
 //! Shared request validation. Called once at the service boundary so the
 //! same rules are not copy-pasted across every service function.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
+use serde::Deserialize;
+
 use crate::services::error::ServiceError;
 
 /// Canonical UUID check (replaces the old hand-rolled regex — the `uuid`
@@ -34,6 +39,91 @@ pub fn validate_password(password: &str) -> Result<(), ServiceError> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Listing body validation (`ItemsAddBody` — guide §10.1 / §14)
+// ---------------------------------------------------------------------------
+
+/// Untagged "string or number" — accepts BOTH plugin request shapes (§10.1):
+/// legacy `{"amount": "3", "price": "1500.0"}` and modern `{"amount": 3, "price": 1500.0}`.
+/// (Note: std `Result<String, i64>` would NOT do this — serde deserializes
+/// `Result` as the externally tagged enum `{"Ok":..}|{"Err":..}`, which no
+/// client sends. Untagged is the correct mechanism for string-or-number.)
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum StrNum {
+    Text(String),
+    Number(f64),
+}
+
+impl StrNum {
+    /// Parse to f64 like Node `Number(trim())` — `None` on failure.
+    fn as_f64(&self) -> Option<f64> {
+        match self {
+            Self::Text(s) => s.trim().parse::<f64>().ok(),
+            Self::Number(n) => Some(*n),
+        }
+    }
+
+    /// Raw text length (only meaningful for the legacy string shape).
+    fn text_len(&self) -> Option<usize> {
+        match self {
+            Self::Text(s) => Some(s.trim().len()),
+            Self::Number(_) => None,
+        }
+    }
+}
+
+/// `^[A-Z0-9_]+$` — uppercase Minecraft material names only (Node `materialRe`).
+static MATERIAL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Z0-9_]+$").expect("static regex must compile"));
+
+/// Material: trimmed, must match `^[A-Z0-9_]+$` (rejects lowercase, spaces,
+/// symbols). Returns the trimmed name for storage.
+pub fn validate_material(material: &str) -> Result<String, ServiceError> {
+    let trimmed = material.trim();
+    if trimmed.is_empty() || !MATERIAL_RE.is_match(trimmed) {
+        return Err(ServiceError::InvalidInput("invalid material".to_owned()));
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn bad_amount() -> ServiceError {
+    ServiceError::InvalidInput("invalid amount (1..64)".to_owned())
+}
+
+/// Listing amount: string or numeric (see [`StrNum`]). Parsed like Node
+/// `Number(trim())` + `Math.floor`, must be finite and 1..=64 (AH listing cap, §14).
+pub fn parse_listing_amount(amount: &StrNum) -> Result<i32, ServiceError> {
+    let raw = amount.as_f64().ok_or_else(bad_amount)?;
+    if !raw.is_finite() {
+        return Err(bad_amount());
+    }
+    let floored = raw.floor();
+    if !(1.0..=64.0).contains(&floored) {
+        return Err(bad_amount());
+    }
+    Ok(floored as i32)
+}
+
+fn bad_price() -> ServiceError {
+    ServiceError::InvalidInput("invalid price".to_owned())
+}
+
+/// Listing price: string or numeric (see [`StrNum`]). Legacy strings must be
+/// at most 20 chars (Node `price.length > 20` reject). Must be finite and > 0
+/// (§14). Returns the normalized TEXT form for the `items.price` column
+/// (Node stores `String(p)`).
+pub fn parse_listing_price(price: &StrNum) -> Result<String, ServiceError> {
+    if price.text_len().is_some_and(|len| len > 20) {
+        return Err(ServiceError::InvalidInput("price too long".to_owned()));
+    }
+    let p = price.as_f64().ok_or_else(bad_price)?;
+    if !p.is_finite() || p <= 0.0 {
+        return Err(bad_price());
+    }
+    Ok(format!("{p}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,5 +148,60 @@ mod tests {
         assert!(validate_password(&"x".repeat(64)).is_ok());
         assert!(validate_password("123").is_err());
         assert!(validate_password(&"x".repeat(65)).is_err());
+    }
+
+    #[test]
+    fn material_rules() {
+        assert_eq!(validate_material(" DIAMOND ").unwrap(), "DIAMOND");
+        assert!(validate_material("GOLD_INGOT").is_ok());
+        assert!(validate_material("DIAMOND_2").is_ok());
+        // lowercase rejected (contract test #2 in guide §18)
+        assert!(validate_material("diamond").is_err());
+        assert!(validate_material("HAS SPACE").is_err());
+        assert!(validate_material("HAS-DASH").is_err());
+        assert!(validate_material("").is_err());
+    }
+
+    #[test]
+    fn amount_rules_both_shapes() {
+        // legacy string shape and modern numeric shape (untagged StrNum)
+        use StrNum::{Number, Text};
+        assert_eq!(parse_listing_amount(&Text(" 3 ".into())).unwrap(), 3);
+        assert_eq!(parse_listing_amount(&Number(5.0)).unwrap(), 5);
+        assert_eq!(parse_listing_amount(&Text("1.9".into())).unwrap(), 1); // Node Math.floor
+        assert_eq!(parse_listing_amount(&Text("64".into())).unwrap(), 64);
+        assert!(parse_listing_amount(&Text("0".into())).is_err());
+        assert!(parse_listing_amount(&Number(65.0)).is_err());
+        assert!(parse_listing_amount(&Text("abc".into())).is_err());
+        assert!(parse_listing_amount(&Text("".into())).is_err());
+        assert!(parse_listing_amount(&Text("NaN".into())).is_err());
+    }
+
+    #[test]
+    fn price_rules_both_shapes() {
+        use StrNum::{Number, Text};
+        assert_eq!(parse_listing_price(&Text(" 1500.0 ".into())).unwrap(), "1500");
+        assert_eq!(parse_listing_price(&Number(99.5)).unwrap(), "99.5");
+        assert!(parse_listing_price(&Text("1".repeat(21))).is_err()); // Node len>20 reject
+        assert!(parse_listing_price(&Text("abc".into())).is_err());
+        assert!(parse_listing_price(&Text("0".into())).is_err());
+        assert!(parse_listing_price(&Number(0.0)).is_err());
+        assert!(parse_listing_price(&Number(-5.0)).is_err());
+        assert!(parse_listing_price(&Number(f64::NAN)).is_err());
+        assert!(parse_listing_price(&Number(f64::INFINITY)).is_err());
+    }
+
+    #[test]
+    fn strnum_deserializes_both_json_shapes() {
+        // the whole point of StrNum: plain JSON string OR number must both work
+        assert!(matches!(
+            serde_json::from_str::<StrNum>("\"5\"").unwrap(),
+            StrNum::Text(_)
+        ));
+        assert!(matches!(
+            serde_json::from_str::<StrNum>("5").unwrap(),
+            StrNum::Number(_)
+        ));
+        assert!(serde_json::from_str::<StrNum>("[1]").is_err());
     }
 }

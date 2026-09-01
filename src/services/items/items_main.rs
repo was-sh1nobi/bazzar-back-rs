@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use crate::services::error::{internal, ServiceError};
 #[derive(Deserialize , Serialize)]
@@ -48,9 +48,11 @@ pub async fn get_items_main_service(
 
     // Single-query: data + total via window function — no separate COUNT(*)
     // If total=0, window returns no rows, so we handle empty case below.
+    // Note: Postgres `REAL` is float4 — cast to DOUBLE PRECISION (float8) so it
+    // decodes as f64 (matches SQLite's 8-byte CAST AS REAL in the Node original).
     let next_idx = values.len() + 1; // for LIMIT
     let sql = format!(
-        r#"SELECT id, seller AS seller_name, material, amount, CAST(price AS REAL) AS price, COUNT(*) OVER() AS total
+        r#"SELECT id, seller AS seller_name, material, amount, CAST(price AS DOUBLE PRECISION) AS price, COUNT(*) OVER() AS total
            FROM items WHERE {where_sql} ORDER BY id LIMIT ${next_idx} OFFSET ${next_idx_plus1}"#,
         next_idx_plus1 = next_idx + 1
     );
@@ -76,19 +78,18 @@ pub async fn get_items_main_service(
     let items: Vec<Items> = rows
         .into_iter()
         .map(|r| Items {
-            id: r.try_get("", "id").unwrap_or(0),
+            // items.id is INTEGER (int4) — must read as i32 then widen
+            id: r.try_get::<Option<i32>>("", "id").unwrap_or(None).unwrap_or(0) as i64,
             seller_name: r.try_get("", "seller_name").unwrap_or_default(),
             material: r.try_get("", "material").unwrap_or_default(),
             amount: r.try_get::<Option<i32>>("", "amount").unwrap_or(None).unwrap_or(0) as i64,
-            price: r.try_get::<Option<String>>("", "price")
-                .unwrap_or(None)
-                .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(0.0),
+            // CAST(price AS REAL) is already a float8 — read as f64 directly
+            price: r.try_get::<Option<f64>>("", "price").unwrap_or(None).unwrap_or(0.0),
         })
         .collect();
 
-    // version is in-memory counter in Node `db.ts:125`; Rust keeps 0 until you add mutationVersion table
-    let version = 0;
+    // version is in-memory counter in Node `db.ts:125` — mirrored by items::version
+    let version = crate::services::items::version::get_version();
 
     Ok(ItemsMainOutput {
         page,

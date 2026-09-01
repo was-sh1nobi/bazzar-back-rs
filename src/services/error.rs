@@ -19,10 +19,15 @@ pub enum ServiceError {
     AlreadyRegistered,
     /// 404
     NotFound,
+    /// 404 — the requested resource (e.g. item) does not exist.
+    /// Separate from `NotFound` whose client message is auth-specific.
+    ItemNotFound,
     /// 401
     InvalidCredentials,
     /// 400 — required request parameter missing; carries client-safe message
     MissingParam(String),
+    /// 400 — request body validation failure; carries the client-safe message
+    InvalidInput(String),
     /// 500 — stored password hash cannot be parsed
     CorruptedHash,
     /// 500 — unexpected failure. The string is a *context label only*.
@@ -43,8 +48,9 @@ impl ServiceError {
     pub fn http_status(&self) -> u16 {
         match self {
             Self::MalformedUuid | Self::InvalidName(_) | Self::InvalidPassword(_) => 422,
-            Self::AlreadyRegistered | Self::MissingParam(_) => 400,
+            Self::AlreadyRegistered | Self::MissingParam(_) | Self::InvalidInput(_) => 400,
             Self::NotFound => 404,
+            Self::ItemNotFound => 404,
             Self::InvalidCredentials => 401,
             Self::CorruptedHash | Self::Internal(_) => 500,
         }
@@ -54,11 +60,12 @@ impl ServiceError {
     pub fn client_message(&self) -> String {
         match self {
             Self::MalformedUuid => "Malformed uuid".to_owned(),
-            Self::InvalidName(msg) | Self::InvalidPassword(msg) | Self::MissingParam(msg) => {
+            Self::InvalidName(msg) | Self::InvalidPassword(msg) | Self::MissingParam(msg) | Self::InvalidInput(msg) => {
                 msg.clone()
             }
             Self::AlreadyRegistered => "already registered".to_owned(),
             Self::NotFound => "not registered".to_owned(),
+            Self::ItemNotFound => "not found".to_owned(),
             Self::InvalidCredentials => "invalid password".to_owned(),
             Self::CorruptedHash | Self::Internal(_) => "internal server error".to_owned(),
         }
