@@ -9,12 +9,10 @@
 //! seller credit) runs in the SAME transaction; ANY failure rolls everything
 //! back, so a failed buy never leaves a listing PENDING or money deducted.
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::Serialize;
 
-use crate::services::error::{internal, ServiceError};
+use crate::services::error::{ServiceError, internal};
 use crate::services::items::version::bump_version;
 use crate::utils::validation::validate_uuid;
 
@@ -42,7 +40,10 @@ pub async fn items_buy_service(
         return Err(ServiceError::ItemNotFound);
     }
 
-    let tx = db.begin().await.map_err(|e| internal("items buy: begin tx", e))?;
+    let tx = db
+        .begin()
+        .await
+        .map_err(|e| internal("items buy: begin tx", e))?;
 
     // All transactional work; on Err the outer match rolls the tx back.
     let work = async {

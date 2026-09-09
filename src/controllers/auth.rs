@@ -20,7 +20,12 @@ pub fn auth_scope() -> Scope {
 struct RegisterBody {
     #[serde(alias = "playerUuid", alias = "playeruuid", alias = "uuid")]
     player_uuid: String,
-    #[serde(alias = "playerName", alias = "player_name", alias = "username", alias = "name")]
+    #[serde(
+        alias = "playerName",
+        alias = "player_name",
+        alias = "username",
+        alias = "name"
+    )]
     player_name: String,
     password: String,
 }

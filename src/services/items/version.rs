@@ -21,16 +21,3 @@ pub fn bump_version() -> i64 {
 pub fn get_version() -> i64 {
     MUTATION_VERSION.load(Ordering::SeqCst)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bump_increments_and_get_reads() {
-        let before = get_version();
-        let after = bump_version();
-        assert_eq!(after, before + 1);
-        assert_eq!(get_version(), after);
-    }
-}

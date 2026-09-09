@@ -1,7 +1,7 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::Serialize;
 
-use crate::services::error::{internal, ServiceError};
+use crate::services::error::{ServiceError, internal};
 use crate::utils::validation::validate_uuid;
 
 #[derive(Debug, Serialize)]
@@ -19,7 +19,6 @@ pub struct StatsOutput {
 pub async fn get_stats_service(
     player_uuid: &str,
     db: &DatabaseConnection,
-    
 ) -> Result<StatsOutput, ServiceError> {
     if !validate_uuid(player_uuid) {
         return Err(ServiceError::MalformedUuid);
@@ -49,12 +48,24 @@ pub async fn get_stats_service(
         .map_err(|e| internal("stats: query failed", e))?
         .ok_or_else(|| internal("stats: empty row", "no row"))?;
 
-    let total_listings: i64 = row.try_get("", "total_listings").map_err(|e| internal("stats: decode total_listings", e))?;
-    let active_listings: i64 = row.try_get("", "active_listings").map_err(|e| internal("stats: decode active_listings", e))?;
-    let total_sold: i64 = row.try_get("", "total_sold").map_err(|e| internal("stats: decode total_sold", e))?;
-    let my_listings: i64 = row.try_get("", "my_listings").map_err(|e| internal("stats: decode my_listings", e))?;
-    let my_sold: i64 = row.try_get("", "my_sold").map_err(|e| internal("stats: decode my_sold", e))?;
-    let my_purchases: i64 = row.try_get("", "my_purchases").map_err(|e| internal("stats: decode my_purchases", e))?;
+    let total_listings: i64 = row
+        .try_get("", "total_listings")
+        .map_err(|e| internal("stats: decode total_listings", e))?;
+    let active_listings: i64 = row
+        .try_get("", "active_listings")
+        .map_err(|e| internal("stats: decode active_listings", e))?;
+    let total_sold: i64 = row
+        .try_get("", "total_sold")
+        .map_err(|e| internal("stats: decode total_sold", e))?;
+    let my_listings: i64 = row
+        .try_get("", "my_listings")
+        .map_err(|e| internal("stats: decode my_listings", e))?;
+    let my_sold: i64 = row
+        .try_get("", "my_sold")
+        .map_err(|e| internal("stats: decode my_sold", e))?;
+    let my_purchases: i64 = row
+        .try_get("", "my_purchases")
+        .map_err(|e| internal("stats: decode my_purchases", e))?;
 
     Ok(StatsOutput {
         total_listings,

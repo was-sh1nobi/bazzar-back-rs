@@ -1,22 +1,22 @@
+use crate::services::error::{ServiceError, internal};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
-use crate::services::error::{internal, ServiceError};
-#[derive(Deserialize , Serialize)]
-struct Items{
-    id : i64 ,
-    seller_name : String,
-    material : String,
-    amount : i64,
-    price : f64,
+#[derive(Deserialize, Serialize)]
+struct Items {
+    id: i64,
+    seller_name: String,
+    material: String,
+    amount: i64,
+    price: f64,
 }
-#[derive(Deserialize , Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ItemsMainOutput {
-    page : i64,
-    page_size : i64,
-    total : i64,
+    page: i64,
+    page_size: i64,
+    total: i64,
     total_pages: i64,
-    version : i64,
-    items : Vec<Items>
+    version: i64,
+    items: Vec<Items>,
 }
 
 /// Defaults mirror Node `items.ts:19 parsePage` — page 0, pageSize 45, clamped 1..100, 0-based offset.
@@ -73,18 +73,31 @@ pub async fn get_items_main_service(
         0
     };
     // total_pages = ceil(total / limit), at least 1 if you want Node's Math.ceil(total/pageSize) with fallback 1
-    let total_pages = if total == 0 { 0 } else { (total + limit - 1) / limit };
+    let total_pages = if total == 0 {
+        0
+    } else {
+        (total + limit - 1) / limit
+    };
 
     let items: Vec<Items> = rows
         .into_iter()
         .map(|r| Items {
             // items.id is INTEGER (int4) — must read as i32 then widen
-            id: r.try_get::<Option<i32>>("", "id").unwrap_or(None).unwrap_or(0) as i64,
+            id: r
+                .try_get::<Option<i32>>("", "id")
+                .unwrap_or(None)
+                .unwrap_or(0) as i64,
             seller_name: r.try_get("", "seller_name").unwrap_or_default(),
             material: r.try_get("", "material").unwrap_or_default(),
-            amount: r.try_get::<Option<i32>>("", "amount").unwrap_or(None).unwrap_or(0) as i64,
+            amount: r
+                .try_get::<Option<i32>>("", "amount")
+                .unwrap_or(None)
+                .unwrap_or(0) as i64,
             // CAST(price AS REAL) is already a float8 — read as f64 directly
-            price: r.try_get::<Option<f64>>("", "price").unwrap_or(None).unwrap_or(0.0),
+            price: r
+                .try_get::<Option<f64>>("", "price")
+                .unwrap_or(None)
+                .unwrap_or(0.0),
         })
         .collect();
 
@@ -99,9 +112,4 @@ pub async fn get_items_main_service(
         version,
         items,
     })
-
-
-
-
-
 }

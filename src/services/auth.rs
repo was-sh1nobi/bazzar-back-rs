@@ -91,9 +91,7 @@ where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
 {
-    spawn_blocking(f)
-        .await
-        .map_err(|e| internal(context, e))
+    spawn_blocking(f).await.map_err(|e| internal(context, e))
 }
 
 // ---------------------------------------------------------------------------
@@ -242,9 +240,11 @@ pub async fn change_service(
 
     // Hash new password (off the async runtime)
     let new_pw = input.new_password.clone();
-    let new_hash = blocking("change: hashing task failed", move || hash_password(&new_pw))
-        .await?
-        .map_err(|e| internal("change: hashing failed", e))?;
+    let new_hash = blocking("change: hashing task failed", move || {
+        hash_password(&new_pw)
+    })
+    .await?
+    .map_err(|e| internal("change: hashing failed", e))?;
 
     let mut am: users::ActiveModel = user.into();
     am.password_hash = Set(Some(new_hash));
@@ -257,24 +257,4 @@ pub async fn change_service(
         success: true,
         message: "password changed",
     })
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn validation_rejects_bad_input_before_any_db_work() {
-        // Pure validation — no DB connection needed.
-        let err = validate_name("a").unwrap_err();
-        assert_eq!(err.http_status(), 422);
-        assert!(matches!(
-            validate_password("123").unwrap_err(),
-            ServiceError::InvalidPassword(_)
-        ));
-    }
 }

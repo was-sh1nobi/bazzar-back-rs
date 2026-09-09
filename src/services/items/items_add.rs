@@ -13,11 +13,11 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::Deserialize;
 
-use crate::services::error::{internal, ServiceError};
+use crate::services::error::{ServiceError, internal};
 use crate::services::items::version::bump_version;
 use crate::utils::provenance::{is_blocked, normalize_origin, normalize_source};
 use crate::utils::validation::{
-    parse_listing_amount, parse_listing_price, validate_material, validate_uuid, StrNum,
+    StrNum, parse_listing_amount, parse_listing_price, validate_material, validate_uuid,
 };
 
 /// Dual-shape body (guide §10.1): `amount`/`price` accept legacy strings

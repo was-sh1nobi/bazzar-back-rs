@@ -49,6 +49,3 @@ pub async fn get_items_poll_service(
     // pagination and own-listing exclusion. Zero extra SQL here.
     get_items_main_service(page, page_size, uuid, db).await
 }
-
-
-

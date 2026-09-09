@@ -1,5 +1,5 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use crate::entities::users;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 /// Upsert a user with balance 0 (guide §9.1 `registerIfAbsentByUuid`).
 /// When the user already exists and a `username` is provided, the stored

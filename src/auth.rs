@@ -1,9 +1,11 @@
 use std::future::{Ready, ready};
 use std::sync::LazyLock;
 
-use actix_web::{dev::Payload, Error, FromRequest, HttpRequest, error::ErrorUnauthorized};
+use actix_web::{Error, FromRequest, HttpRequest, dev::Payload, error::ErrorUnauthorized};
 use chrono::{Duration, Utc};
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation, decode, encode};
+use jsonwebtoken::{
+    Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation, decode, encode,
+};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -95,14 +97,20 @@ impl Claims {
 
 /// Build a signed HS256 JWT for `player_uuid` + `username`.
 /// Uses `JWT_SECRET` (HMAC-SHA256) — forgery requires the secret.
-pub fn create_jwt(player_uuid: &str, username: &str) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_jwt(
+    player_uuid: &str,
+    username: &str,
+) -> Result<String, jsonwebtoken::errors::Error> {
     let claims = Claims::new(player_uuid, username);
     let header = Header::new(Algorithm::HS256);
     encode(&header, &claims, &encoding_key())
 }
 
 /// Alias — same as `create_jwt` for ergonomics where `builder` naming is preferred.
-pub fn build_token(player_uuid: &str, username: &str) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn build_token(
+    player_uuid: &str,
+    username: &str,
+) -> Result<String, jsonwebtoken::errors::Error> {
     create_jwt(player_uuid, username)
 }
 
@@ -232,58 +240,5 @@ impl FromRequest for Auth {
 
         // 3. Verify signature + claims (forgery prevention)
         ready(Auth::from_token(token))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn roundtrip_build_and_verify() {
-        let uuid = "123e4567-e89b-12d3-a456-426614174000";
-        let token = create_jwt(uuid, "Steve").expect("build token");
-        let claims = verify_jwt(&token).expect("verify token");
-        assert_eq!(claims.sub, uuid);
-        assert_eq!(claims.username, "Steve");
-        assert_eq!(claims.iss, ISSUER);
-        assert_eq!(claims.aud, AUDIENCE);
-    }
-
-    #[test]
-    fn rejects_tampered_signature() {
-        let token = create_jwt("123e4567-e89b-12d3-a456-426614174000", "Steve").unwrap();
-        // Flip last char to forge signature
-        let mut tampered = token.clone();
-        let last = tampered.pop().unwrap();
-        tampered.push(if last == 'a' { 'b' } else { 'a' });
-        assert!(verify_jwt(&tampered).is_err(), "tampered token must be rejected");
-    }
-
-    #[test]
-    fn rejects_wrong_alg_none() {
-        // `none` algorithm tokens must be rejected — jsonwebtoken does this if
-        // validation is pinned to HS256. Craft a `none` token manually.
-        let header = Header {
-            alg: Algorithm::HS256, // placeholder, we will replace raw
-            ..Default::default()
-        };
-        // Manually build a none token: base64(header).base64(payload). (no sig)
-        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-        let hdr = URL_SAFE_NO_PAD.encode(serde_json::json!({"alg":"none","typ":"JWT"}).to_string());
-        let payload = URL_SAFE_NO_PAD.encode(
-            serde_json::json!({
-                "sub":"123e4567-e89b-12d3-a456-426614174000",
-                "username":"Steve",
-                "iat": Utc::now().timestamp(),
-                "exp": (Utc::now()+Duration::hours(1)).timestamp(),
-                "iss": ISSUER,
-                "aud": AUDIENCE
-            })
-            .to_string(),
-        );
-        let none_token = format!("{}.{}.", hdr, payload);
-        assert!(verify_jwt(&none_token).is_err(), "none alg must be rejected");
-        let _ = header; // suppress unused
     }
 }

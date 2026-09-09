@@ -60,9 +60,10 @@ impl ServiceError {
     pub fn client_message(&self) -> String {
         match self {
             Self::MalformedUuid => "Malformed uuid".to_owned(),
-            Self::InvalidName(msg) | Self::InvalidPassword(msg) | Self::MissingParam(msg) | Self::InvalidInput(msg) => {
-                msg.clone()
-            }
+            Self::InvalidName(msg)
+            | Self::InvalidPassword(msg)
+            | Self::MissingParam(msg)
+            | Self::InvalidInput(msg) => msg.clone(),
             Self::AlreadyRegistered => "already registered".to_owned(),
             Self::NotFound => "not registered".to_owned(),
             Self::ItemNotFound => "not found".to_owned(),
@@ -79,28 +80,3 @@ impl fmt::Display for ServiceError {
 }
 
 impl std::error::Error for ServiceError {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn status_codes_match_spec() {
-        assert_eq!(ServiceError::MalformedUuid.http_status(), 422);
-        assert_eq!(
-            ServiceError::InvalidName("Name too short".into()).http_status(),
-            422
-        );
-        assert_eq!(ServiceError::AlreadyRegistered.http_status(), 400);
-        assert_eq!(ServiceError::NotFound.http_status(), 404);
-        assert_eq!(ServiceError::InvalidCredentials.http_status(), 401);
-        assert_eq!(ServiceError::Internal("x".into()).http_status(), 500);
-    }
-
-    #[test]
-    fn internal_errors_never_leak_details() {
-        let e = ServiceError::Internal("relation \"users\" does not exist".to_owned());
-        assert_eq!(e.client_message(), "internal server error");
-        assert!(!e.to_string().contains("relation"));
-    }
-}

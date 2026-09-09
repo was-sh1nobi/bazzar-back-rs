@@ -1,15 +1,17 @@
-use actix_web::{web, HttpResponse, Scope};
-use sea_orm::DatabaseConnection;
-use serde::Deserialize;
 use crate::auth::Auth;
 use crate::services::error::ServiceError;
 use crate::services::stats::get_stats_service;
+use actix_web::{HttpResponse, Scope, web};
+use sea_orm::DatabaseConnection;
+use serde::Deserialize;
 
-pub fn stats_scope() -> Scope { web::scope("/stats").route("", web::get().to(get_stats)) }
+pub fn stats_scope() -> Scope {
+    web::scope("/stats").route("", web::get().to(get_stats))
+}
 
 #[derive(Deserialize)]
 pub struct StatsRequest {
-    player : Option<String>,
+    player: Option<String>,
 }
 pub async fn get_stats(
     _auth: Auth,

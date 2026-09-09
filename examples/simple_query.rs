@@ -1,8 +1,8 @@
 //! Simple SeaORM query example — copy this pattern anywhere
 //! Run: cargo run --example simple_query
 
-use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter, Set};
 use bazzar_back::entities::{items, users};
+use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter, Set};
 
 #[tokio::main]
 async fn main() -> Result<(), sea_orm::DbErr> {
@@ -26,7 +26,13 @@ async fn main() -> Result<(), sea_orm::DbErr> {
 
     println!("Steve has {} available listings", steve_items.len());
     for it in &steve_items {
-        println!("  #{} {} x{} @ {}", it.id, it.material.as_deref().unwrap_or("?"), it.amount.unwrap_or(0), it.price.as_deref().unwrap_or("0"));
+        println!(
+            "  #{} {} x{} @ {}",
+            it.id,
+            it.material.as_deref().unwrap_or("?"),
+            it.amount.unwrap_or(0),
+            it.price.as_deref().unwrap_or("0")
+        );
     }
 
     // ── INSERT: create a new item ────────────────────────────────────

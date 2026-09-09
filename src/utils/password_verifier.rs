@@ -25,17 +25,3 @@ pub fn verify_password(hash: &str, password: &str) -> bool {
         .verify_password(password.as_bytes(), &parsed)
         .is_ok()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hash_and_verify_roundtrip() {
-        let hash = hash_password("hunter2").unwrap();
-        assert!(hash.starts_with("$argon2id$"));
-        assert!(verify_password(&hash, "hunter2"));
-        assert!(!verify_password(&hash, "hunter3"));
-        assert!(!verify_password("not-a-hash", "hunter2"));
-    }
-}

@@ -1,7 +1,9 @@
 use actix_web::{App, HttpServer, middleware::Logger, web};
-use bazzar_back::controllers::{auth::auth_scope, balance::balance_scope, items::items_scope, stats::stats_scope};
 use bazzar_back::controllers::health::health;
 use bazzar_back::controllers::list::list_scope;
+use bazzar_back::controllers::{
+    auth::auth_scope, balance::balance_scope, items::items_scope, stats::stats_scope,
+};
 use bazzar_back::database;
 
 #[actix_web::main]
@@ -29,7 +31,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or(8080);
 
     tracing::info!("bazzar-back listening on http://{host}:{port}");
-   
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(db.clone()))

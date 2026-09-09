@@ -6,11 +6,11 @@
 //!   history(id, seller, buyer, ...)
 //!   users(playeruuid PK, username, balance, ...)
 
+use bazzar_back::entities::{history, items, users};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Database, EntityTrait, JoinType, QueryFilter,
     QuerySelect, RelationTrait,
 };
-use bazzar_back::entities::{history, items, users};
 
 #[tokio::main]
 async fn main() -> Result<(), sea_orm::DbErr> {
@@ -24,13 +24,19 @@ async fn main() -> Result<(), sea_orm::DbErr> {
         let mut am: items::ActiveModel = model.into();
         am.price = Set(Some("999.5".to_owned())); // TEXT per spec §5.1
         let updated: items::Model = am.update(&db).await?;
-        println!("UPDATE single: id={} new_price={:?}", updated.id, updated.price);
+        println!(
+            "UPDATE single: id={} new_price={:?}",
+            updated.id, updated.price
+        );
     }
 
     // UPDATE — bulk via update_many (no SELECT, single SQL)
     // e.g. bump price of all DIAMOND listings (TEXT column, no enum cast needed)
     let res = items::Entity::update_many()
-        .col_expr(items::Column::Price, sea_orm::sea_query::Expr::value("200.0"))
+        .col_expr(
+            items::Column::Price,
+            sea_orm::sea_query::Expr::value("200.0"),
+        )
         .filter(items::Column::Material.eq("DIAMOND"))
         .filter(items::Column::Status.eq(items::ItemStatus::Available))
         .exec(&db)
@@ -68,7 +74,10 @@ async fn main() -> Result<(), sea_orm::DbErr> {
         .filter(items::Column::Status.eq(items::ItemStatus::Removed))
         .exec(&db)
         .await?;
-    println!("DELETE many (REMOVED) rows_affected={}", del_many.rows_affected);
+    println!(
+        "DELETE many (REMOVED) rows_affected={}",
+        del_many.rows_affected
+    );
 
     // history delete example
     let _ = history::Entity::delete_many()
@@ -93,7 +102,11 @@ async fn main() -> Result<(), sea_orm::DbErr> {
         .filter(users::Column::Username.is_not_null())
         .all(&db)
         .await?;
-    println!("INNER JOIN rows={} (also_related rows={})", inner.len(), inner2.len());
+    println!(
+        "INNER JOIN rows={} (also_related rows={})",
+        inner.len(),
+        inner2.len()
+    );
 
     // Manual INNER JOIN with explicit JoinType (same as above)
     let manual_inner = items::Entity::find()
@@ -110,7 +123,12 @@ async fn main() -> Result<(), sea_orm::DbErr> {
         .await?;
     println!("LEFT JOIN (find_also_related) rows={}", left.len());
     for (it, usr) in left.iter().take(3) {
-        println!("  item #{} seller={} -> user={:?}", it.id, it.seller, usr.as_ref().map(|u| &u.username));
+        println!(
+            "  item #{} seller={} -> user={:?}",
+            it.id,
+            it.seller,
+            usr.as_ref().map(|u| &u.username)
+        );
     }
 
     // Explicit LEFT JOIN via QuerySelect

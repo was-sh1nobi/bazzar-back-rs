@@ -45,5 +45,3 @@ pub async fn get_balance_service(
         balance,
     })
 }
-
-

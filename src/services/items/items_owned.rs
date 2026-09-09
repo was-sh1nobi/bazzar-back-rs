@@ -12,7 +12,7 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement};
 use serde::Serialize;
 
-use crate::services::error::{internal, ServiceError};
+use crate::services::error::{ServiceError, internal};
 use crate::services::items::version::get_version;
 use crate::utils::validation::validate_uuid;
 
@@ -40,8 +40,7 @@ pub struct ItemsOwnedOutput {
 }
 
 /// Provenance gate — must be ported exactly (guide §7, anti-dupe).
-const PROVENANCE_SQL: &str =
-    "status = 'AVAILABLE' \
+const PROVENANCE_SQL: &str = "status = 'AVAILABLE' \
      AND LOWER(COALESCE(source,'player')) NOT IN ('creative','admin','command') \
      AND LOWER(COALESCE(origin,'survival')) NOT IN ('creative','command','unknown')";
 
@@ -52,8 +51,7 @@ const PROVENANCE_SQL: &str =
 /// rows whose `seller_playeruuid` was never backfilled. This prevents two
 /// accounts sharing a username from seeing each other's data — unlike the Node
 /// original, where the name-join alone would leak across same-named accounts.
-const OWNER_MATCH_SQL: &str =
-    "(seller_playeruuid = $1 \
+const OWNER_MATCH_SQL: &str = "(seller_playeruuid = $1 \
       OR (seller_playeruuid IS NULL AND seller = $1) \
       OR (seller_playeruuid IS NULL AND seller IN (SELECT username FROM users WHERE playeruuid = $1)))";
 
@@ -81,7 +79,11 @@ async fn run_page(
         .first()
         .map(|r| r.try_get("", "total").unwrap_or(0))
         .unwrap_or(0);
-    let total_pages = if total == 0 { 0 } else { (total + limit - 1) / limit };
+    let total_pages = if total == 0 {
+        0
+    } else {
+        (total + limit - 1) / limit
+    };
 
     let items: Vec<OwnedItem> = rows.into_iter().map(map_row).collect();
 
@@ -98,14 +100,23 @@ async fn run_page(
 fn map_row(r: QueryResult) -> OwnedItem {
     OwnedItem {
         // id is INTEGER (int4) — read as i32 then widen
-        id: r.try_get::<Option<i32>>("", "id").unwrap_or(None).unwrap_or(0) as i64,
+        id: r
+            .try_get::<Option<i32>>("", "id")
+            .unwrap_or(None)
+            .unwrap_or(0) as i64,
         seller_name: r.try_get("", "seller_name").unwrap_or_default(),
         // buyer is a nullable TEXT uuid column (NULL for /items/active rows)
         buyer: r.try_get::<Option<String>>("", "buyer").unwrap_or(None),
         material: r.try_get("", "material").unwrap_or_default(),
-        amount: r.try_get::<Option<i32>>("", "amount").unwrap_or(None).unwrap_or(0) as i64,
+        amount: r
+            .try_get::<Option<i32>>("", "amount")
+            .unwrap_or(None)
+            .unwrap_or(0) as i64,
         // price stored as TEXT, CAST to DOUBLE PRECISION on read (guide §5.3)
-        price: r.try_get::<Option<f64>>("", "price").unwrap_or(None).unwrap_or(0.0),
+        price: r
+            .try_get::<Option<f64>>("", "price")
+            .unwrap_or(None)
+            .unwrap_or(0.0),
     }
 }
 
@@ -183,4 +194,3 @@ pub async fn get_items_history_service(
 
     run_page(db, sql, vec![player_uuid.into()], page, page_size).await
 }
-
