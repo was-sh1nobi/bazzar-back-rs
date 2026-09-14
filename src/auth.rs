@@ -25,6 +25,11 @@ static JWT_SECRET: LazyLock<String> = LazyLock::new(|| {
     match std::env::var("JWT_SECRET") {
         Ok(s) if s.len() >= 32 => s,
         Ok(s) if !s.is_empty() => {
+            if std::env::var("APP_ENV").as_deref() == Ok("production")
+                || std::env::var("ENVIRONMENT").as_deref() == Ok("production")
+            {
+                panic!("FATAL: JWT_SECRET must be >= 32 bytes in production");
+            }
             eprintln!(
                 "[WARN] JWT_SECRET is too short ({} bytes). Use >= 32 bytes for HS256 security.",
                 s.len()
@@ -32,6 +37,11 @@ static JWT_SECRET: LazyLock<String> = LazyLock::new(|| {
             s
         }
         _ => {
+            if std::env::var("APP_ENV").as_deref() == Ok("production")
+                || std::env::var("ENVIRONMENT").as_deref() == Ok("production")
+            {
+                panic!("FATAL: JWT_SECRET must be set to >= 32 bytes in production");
+            }
             eprintln!(
                 "[WARN] JWT_SECRET not set — using dev fallback. \
                  Set JWT_SECRET env var to a random 32+ byte string in production!"

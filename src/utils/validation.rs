@@ -57,7 +57,7 @@ pub enum StrNum {
 
 impl StrNum {
     /// Parse to f64 like Node `Number(trim())` — `None` on failure.
-    fn as_f64(&self) -> Option<f64> {
+    pub fn as_f64(&self) -> Option<f64> {
         match self {
             Self::Text(s) => s.trim().parse::<f64>().ok(),
             Self::Number(n) => Some(*n),
@@ -122,4 +122,38 @@ pub fn parse_listing_price(price: &StrNum) -> Result<String, ServiceError> {
         return Err(bad_price());
     }
     Ok(format!("{p}"))
+}
+
+/// Shop buy amount: 1..=320 (up to 5 stacks). Floored, finite.
+pub fn parse_shop_buy_amount(amount: Option<&StrNum>) -> Result<i32, ServiceError> {
+    let raw = amount
+        .and_then(|a| a.as_f64())
+        .ok_or_else(|| ServiceError::InvalidInput("invalid amount (1..320)".to_owned()))?;
+    if !raw.is_finite() {
+        return Err(ServiceError::InvalidInput(
+            "invalid amount (1..320)".to_owned(),
+        ));
+    }
+    let floored = raw.floor();
+    if !(1.0..=320.0).contains(&floored) {
+        return Err(ServiceError::InvalidInput(
+            "invalid amount (1..320)".to_owned(),
+        ));
+    }
+    Ok(floored as i32)
+}
+
+/// Shop sell amount: 1..=2304 (full inventory). Floored, finite.
+pub fn parse_shop_sell_amount(amount: Option<&StrNum>) -> Result<i32, ServiceError> {
+    let raw = amount
+        .and_then(|a| a.as_f64())
+        .ok_or_else(|| ServiceError::InvalidInput("invalid amount".to_owned()))?;
+    if !raw.is_finite() {
+        return Err(ServiceError::InvalidInput("invalid amount".to_owned()));
+    }
+    let floored = raw.floor();
+    if !(1.0..=2304.0).contains(&floored) {
+        return Err(ServiceError::InvalidInput("invalid amount".to_owned()));
+    }
+    Ok(floored as i32)
 }

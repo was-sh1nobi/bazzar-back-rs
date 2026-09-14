@@ -22,14 +22,22 @@ pub enum ServiceError {
     /// 404 — the requested resource (e.g. item) does not exist.
     /// Separate from `NotFound` whose client message is auth-specific.
     ItemNotFound,
+    /// 404 — shop item not found in shop_items table
+    ShopItemNotFound,
     /// 401
     InvalidCredentials,
+    /// 401 — unauthorized action or identity mismatch
+    Unauthorized(String),
     /// 400 — required request parameter missing; carries client-safe message
     MissingParam(String),
     /// 400 — request body validation failure; carries the client-safe message
     InvalidInput(String),
     /// 500 — stored password hash cannot be parsed
     CorruptedHash,
+    /// 500 — invalid shop item price
+    InvalidItemPrice,
+    /// 500 — catalog reload failed
+    ReloadFailed,
     /// 500 — unexpected failure. The string is a *context label only*.
     /// Never leak `DbErr`/infra details to clients — log them instead
     /// (see [`internal`]).
@@ -49,10 +57,12 @@ impl ServiceError {
         match self {
             Self::MalformedUuid | Self::InvalidName(_) | Self::InvalidPassword(_) => 422,
             Self::AlreadyRegistered | Self::MissingParam(_) | Self::InvalidInput(_) => 400,
-            Self::NotFound => 404,
-            Self::ItemNotFound => 404,
-            Self::InvalidCredentials => 401,
-            Self::CorruptedHash | Self::Internal(_) => 500,
+            Self::NotFound | Self::ItemNotFound | Self::ShopItemNotFound => 404,
+            Self::InvalidCredentials | Self::Unauthorized(_) => 401,
+            Self::CorruptedHash
+            | Self::InvalidItemPrice
+            | Self::ReloadFailed
+            | Self::Internal(_) => 500,
         }
     }
 
@@ -67,7 +77,11 @@ impl ServiceError {
             Self::AlreadyRegistered => "already registered".to_owned(),
             Self::NotFound => "not registered".to_owned(),
             Self::ItemNotFound => "not found".to_owned(),
+            Self::ShopItemNotFound => "unknown shop item".to_owned(),
             Self::InvalidCredentials => "invalid password".to_owned(),
+            Self::Unauthorized(msg) => msg.clone(),
+            Self::InvalidItemPrice => "invalid item price".to_owned(),
+            Self::ReloadFailed => "reload failed".to_owned(),
             Self::CorruptedHash | Self::Internal(_) => "internal server error".to_owned(),
         }
     }

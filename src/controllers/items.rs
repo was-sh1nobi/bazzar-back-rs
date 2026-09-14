@@ -7,6 +7,7 @@ use crate::services::items::items_owned::{
     get_items_active_service, get_items_bought_service, get_items_history_service,
 };
 use crate::services::items::items_poll::get_items_poll_service;
+use crate::services::items::items_retrieve::get_items_retrieve_service;
 use actix_web::{HttpResponse, Scope, web};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
@@ -20,6 +21,7 @@ pub fn items_scope() -> Scope {
         .route("/history", web::get().to(get_items_history_controller))
         .route("/add", web::post().to(post_items_add_controller))
         .route("/buy", web::post().to(post_items_buy_controller))
+        .route("/retrieve", web::post().to(post_items_retrieve_controller))
 }
 
 #[derive(Deserialize)]
@@ -138,6 +140,17 @@ pub async fn post_items_buy_controller(
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
     let out = items_buy_service(auth.player_uuid(), body.wanted_id, &db).await?;
+    Ok(HttpResponse::Ok().json(out))
+}
+
+/// `POST /items/retrieve` — remove the caller's own AVAILABLE listing
+/// (guide §12.2). Like buy, seller identity comes only from JWT.
+pub async fn post_items_retrieve_controller(
+    auth: Auth,
+    body: web::Json<ItemsBuyBody>,
+    db: web::Data<DatabaseConnection>,
+) -> Result<HttpResponse, ServiceError> {
+    let out = get_items_retrieve_service(&db, body.wanted_id, auth.player_uuid()).await?;
     Ok(HttpResponse::Ok().json(out))
 }
 

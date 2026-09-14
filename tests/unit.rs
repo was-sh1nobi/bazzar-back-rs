@@ -113,6 +113,10 @@ fn status_codes_match_spec() {
     assert_eq!(ServiceError::AlreadyRegistered.http_status(), 400);
     assert_eq!(ServiceError::NotFound.http_status(), 404);
     assert_eq!(ServiceError::InvalidCredentials.http_status(), 401);
+    assert_eq!(
+        ServiceError::Unauthorized("denied".into()).http_status(),
+        401
+    );
     assert_eq!(ServiceError::Internal("x".into()).http_status(), 500);
 }
 

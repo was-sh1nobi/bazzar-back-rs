@@ -4,10 +4,9 @@
 //! player at balance 0 if missing. Returns a typed payload — never the whole
 //! user row (the old version serialized `password_hash` to clients!).
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::Serialize;
 
-use crate::entities::users;
 use crate::services::error::{ServiceError, internal};
 use crate::utils::register_if_absent::register_if_absent;
 use crate::utils::validation::validate_uuid;
@@ -33,13 +32,17 @@ pub async fn get_balance_service(
         .await
         .map_err(|e| internal("balance: auto-register failed", e))?;
 
-    let user = users::Entity::find()
-        .filter(users::Column::Playeruuid.eq(uuid))
-        .one(db)
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        r#"SELECT balance FROM users WHERE playeruuid = $1"#,
+        [uuid.into()],
+    );
+    let balance = db
+        .query_one(stmt)
         .await
-        .map_err(|e| internal("balance: database query failed", e))?;
-
-    let balance = user.map(|u| u.balance).unwrap_or(0.0);
+        .map_err(|e| internal("balance: database query failed", e))?
+        .and_then(|r| r.try_get::<f64>("", "balance").ok())
+        .unwrap_or(0.0);
     Ok(BalanceOutput {
         player_uuid: uuid.to_owned(),
         balance,

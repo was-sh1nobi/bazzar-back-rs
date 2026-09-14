@@ -3,6 +3,7 @@ pub mod balance;
 pub mod health;
 pub mod items;
 pub mod list;
+pub mod shop;
 pub mod stats;
 
 use actix_web::{HttpResponse, ResponseError, http::StatusCode};

@@ -14,7 +14,7 @@ pub struct StatsRequest {
     player: Option<String>,
 }
 pub async fn get_stats(
-    _auth: Auth,
+    auth: Auth,
     query: web::Query<StatsRequest>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
@@ -23,9 +23,11 @@ pub async fn get_stats(
             "player query param is required".to_string(),
         ));
     };
-    // Optional hardening: users may only query their own stats unless privileged.
-    // For now allow any `player` if you have a valid JWT, but you can enforce:
-    // if player != auth.player_uuid() { return Err(ServiceError::Unauthorized(...)) }
+    if player != auth.player_uuid() {
+        return Err(ServiceError::Unauthorized(
+            "you can only query your own stats".to_string(),
+        ));
+    }
     let out = get_stats_service(player, &db).await?;
     Ok(HttpResponse::Ok().json(out))
 }

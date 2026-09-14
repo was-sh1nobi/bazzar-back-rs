@@ -1,5 +1,4 @@
-use crate::entities::users;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 
 /// Upsert a user with balance 0 (guide §9.1 `registerIfAbsentByUuid`).
 /// When the user already exists and a `username` is provided, the stored
@@ -9,30 +8,20 @@ pub async fn register_if_absent(
     player_uuid: &str,
     username: Option<&str>,
 ) -> Result<(), sea_orm::DbErr> {
-    match users::Entity::find()
-        .filter(users::Column::Playeruuid.eq(player_uuid))
-        .one(db)
-        .await?
-    {
-        Some(existing) => {
-            if let Some(name) = username {
-                let mut am: users::ActiveModel = existing.into();
-                am.username = Set(name.to_owned());
-                users::Entity::update(am).exec(db).await?;
-            }
-            Ok(())
-        }
-        None => {
-            let am = users::ActiveModel {
-                playeruuid: Set(player_uuid.to_owned()),
-                username: Set(username
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| player_uuid.to_owned())),
-                balance: Set(0.0),
-                ..Default::default()
-            };
-            users::Entity::insert(am).exec(db).await?;
-            Ok(())
-        }
-    }
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        r#"INSERT INTO users (playeruuid, username, balance)
+           VALUES ($1, $2, 0.0)
+           ON CONFLICT (playeruuid) DO UPDATE
+           SET username = COALESCE($3, users.username)"#,
+        [
+            player_uuid.into(),
+            username.unwrap_or(player_uuid).into(),
+            username
+                .map(Into::into)
+                .unwrap_or(sea_orm::Value::from(Option::<String>::None)),
+        ],
+    );
+    db.execute(stmt).await?;
+    Ok(())
 }

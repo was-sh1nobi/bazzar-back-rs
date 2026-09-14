@@ -312,7 +312,7 @@ Current (AUTHORITATIVE):
 
 **Auth model (2026-08-31):** `POST /auth/register|login` and `GET /auth/status|/shop/catalog|GET /` remain **public**. All other endpoints require `Authorization: Bearer <JWT>` (per-user, in-memory, HS256 24h). Legacy Node still accepts `x-plugin-secret` shared secret but is deprecated. Table marks `Auth = Bearer` where JWT required.
 
-**Rust port status (2026-08-30):** **14 / 22 done** — auth (4), stats, all items feeds (`/items`, `/poll`, `/active`, `/bought`, `/history`), `/items/add`, `/list`, `/items/buy`, `/balance`. Remaining: `GET /` welcome, `/items/retrieve`, the two `410 Gone` stubs, and the shop suite (`/shop/catalog`, `/shop/catalog/reload`, `/shop/buy`, `/shop/sell`). Deviations in the port are marked inline (✅ with notes / ⚠). Source: `src/controllers/{auth,balance,stats,items,list}.rs`.
+**Rust port status (2026-08-30):** **15 / 22 done** — auth (4), stats, all items feeds (`/items`, `/poll`, `/active`, `/bought`, `/history`), `/items/add`, `/list`, `/items/buy`, `/items/retrieve`, `/balance`. Remaining: `GET /` welcome, the two `410 Gone` stubs, and the shop suite (`/shop/catalog`, `/shop/catalog/reload`, `/shop/buy`, `/shop/sell`). Deviations in the port are marked inline (✅ with notes / ⚠). Source: `src/controllers/{auth,balance,stats,items,list}.rs`.
 
 | # | Method | Path | File | Query / Body | Auth | Success | Errors | Rust port |
 |---|---|---|---|---|---|---|---|---|
@@ -326,7 +326,7 @@ Current (AUTHORITATIVE):
 | 7 | POST | `/items/add` | `src/routes/items.ts:84` | `ItemsAddBody` legacy strings (§10.1) | none | `200 {success:true, message:"item created with id : <id>"}` + bump | `400` price len>20/name spaces/material regex/amount 1..64/blocked | ✅ JWT identity (no `playeruuid`/`playerName` body); string+numeric shapes via untagged `StrNum`; 1-round-trip `INSERT..SELECT users` |
 | 8 | POST | `/list` | `src/routes/auction.ts:13` | modern numeric body (§10.1) | none | `200 {success:true, message:"item created with id : <id>"}` + bump | `400` UUID/name/material/amount/price/blocked | ✅ `controllers/list.rs` reuses the `/items/add` handler (accepts both shapes); JWT identity |
 | 9 | POST | `/items/buy` | `src/routes/items.ts:114` | `{wantedId:number, buyerId:uuid}` | none | `200 {success:true, balance:<newBalance>, message:"item added with id : <historyId>"}` + bump | `400` invalid wantedId/malformed UUID, `404` not found, `400` own listing, `400` PENDING, `400` sold out, `400` insufficient funds | ✅ JWT buyer (body = `{wantedId}` only); **claim-first tx**: `PENDING` claim → own-check → atomic deduct → `SOLD` → history → seller credit, COMMIT, ROLLBACK on any failure |
-| 10 | POST | `/items/retrieve` | `src/routes/items.ts:205` | `{wantedId:number, sellerId:uuid}` | none | `200 {success:true, material, amount, message:"item <id> retrieved"}` → REMOVED + bump | `400` invalid UUID, `404` not found, `400` not available, `400` not owner | ❌ todo |
+| 10 | POST | `/items/retrieve` | `src/routes/items.ts:205` | `{wantedId:number, sellerId:uuid}` | none | `200 {success:true, material, amount, message:"item <id> retrieved"}` → REMOVED + bump | `400` invalid UUID, `404` not found, `400` not available, `400` not owner | ✅ done |
 | 11 | GET | `/balance?player=uuid` | `src/routes/balance.ts:10` / `Rust: controllers/balance.rs:9` | `player=uuid` | **Bearer** (must match `sub`) — legacy Node still allows none but should require Bearer | `200 {playerUuid, balance}` | `400 player query param is required`, `401 missing/invalid token`, `401 you can only query your own balance` | ✅ `controllers/balance.rs` — ⚠ query param only, Bearer check **not yet enforced** |
 | 12 | POST | `/balance/set` | **REMOVED** | — | — | `410 Gone` — use DB seed or internal service | — | ❌ todo (410 Gone) |
 | 13 | POST | `/balance/change` | **REMOVED** | — | — | `410 Gone` — use `POST /shop/buy|sold` or `POST /items/buy` (price-from-DB, atomic) | — | ❌ todo (410 Gone) |
@@ -692,4 +692,3 @@ untitled/src/main/java/com/revokers/bazzar/shop/service/ShopService.java  ★ ze
 ---
 
 > Tip: Start the port by copying `test/api.test.ts` into the target language's test suite and making it pass before adding new features. Then add the 7 new shop contract tests from §18 and verify price tampering is impossible (client price ignored, DB price wins).
-
