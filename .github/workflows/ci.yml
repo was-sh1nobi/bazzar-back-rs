@@ -85,7 +85,7 @@ jobs:
         run: |
           mkdir -p dist/src/data
           mkdir -p dist/deploy
-          mkdir -p dist/migrations
+          mkdir -p dist/migration
 
           cp target/release/bazzar-back dist/
           cp ~/.cargo/bin/sea-orm-cli dist/
@@ -93,7 +93,7 @@ jobs:
           cp src/data/items.json dist/src/data/
           cp .env.example dist/
 
-          cp -r migrations/. dist/migrations/
+          cp -r migration/. dist/migration/
 
           cp deploy/bazzar.service dist/deploy/
           cp deploy/remote.sh dist/deploy/
