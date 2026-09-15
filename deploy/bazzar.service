@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 WorkingDirectory=/var/www/bazzar
 EnvironmentFile=/var/www/bazzar/.env
+Environment=APP_ENV=production
 ExecStart=/var/www/bazzar/bazzar-back
 Restart=on-failure
 RestartSec=3
