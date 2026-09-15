@@ -25,8 +25,32 @@ if [ ! -f "$APP_DIR/.env" ]; then
 
     echo "::warning:: No .env found."
     echo "::warning:: Copied .env.example to $APP_DIR/.env"
-    echo "::warning:: You MUST configure production environment variables."
+    echo "::warning:: You MUST configure production environment variables (e.g. DATABASE_URL)."
 fi
+
+# Generate a fresh JWT_SECRET every deploy (inlined from scripts/generate_jwt_secret.sh, no external dep).
+# - 64 bytes = 512 bits, base64url-encoded without padding (~86 chars).
+# - Invalidates all previously issued tokens on each deploy.
+BYTES=64
+if command -v openssl >/dev/null 2>&1; then
+    JWT_SECRET_NEW=$(openssl rand -base64 "$BYTES" | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+else
+    # fallback: /dev/urandom + base64 (coreutils)
+    JWT_SECRET_NEW=$(head -c "$BYTES" /dev/urandom | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')
+fi
+
+if [ "${#JWT_SECRET_NEW}" -lt 43 ]; then
+    echo "ERROR: generated JWT_SECRET too short" >&2
+    exit 1
+fi
+
+if grep -q '^JWT_SECRET=' "$APP_DIR/.env"; then
+    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${JWT_SECRET_NEW}|" "$APP_DIR/.env"
+else
+    echo "JWT_SECRET=${JWT_SECRET_NEW}" >> "$APP_DIR/.env"
+fi
+unset JWT_SECRET_NEW
+echo "Generated fresh JWT_SECRET for this deploy (all prior tokens invalidated)."
 
 echo "== [3/5] updating application binary and assets"
 
