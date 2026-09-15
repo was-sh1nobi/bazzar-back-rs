@@ -94,7 +94,7 @@ if [ ! -x "$APP_DIR/sea-orm-cli" ]; then
     exit 1
 fi
 
-if [ ! -d "$APP_DIR/migrations" ]; then
+if [ ! -d "$APP_DIR/migration" ]; then
     echo "ERROR: migrations directory not found"
     exit 1
 fi
