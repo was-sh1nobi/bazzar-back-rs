@@ -11,6 +11,6 @@ pub async fn root_welcome() -> HttpResponse {
     // ponytail: returns welcome payload matching Node Fastify response
     HttpResponse::Ok().json(json!({
         "status": 200,
-        "message": "Welcome to Fastify"
+        "message": "Welcome to Rust"
     }))
 }

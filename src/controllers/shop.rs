@@ -28,20 +28,12 @@ async fn post_reload(
 ) -> Result<HttpResponse, ServiceError> {
     check_jwt_rate_limit(&auth, &req, "shop_reload", 5, 60)?;
 
-    let is_plugin_secret = req
-        .headers()
-        .get("x-plugin-secret")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|secret| {
-            std::env::var("PLUGIN_SECRET")
-                .ok()
-                .map(|expected| !expected.is_empty() && expected == secret)
-        })
-        .unwrap_or(false);
-
+    // No shared plugin secret: this plugin is public, so there is deliberately
+    // no plugin<->backend verification. Privileged endpoints rely on the
+    // caller's own JWT (admin role) or a website admin account.
     let is_jwt_admin = auth.role() == Some("admin");
 
-    let is_web_admin = if !is_plugin_secret && !is_jwt_admin {
+    let is_web_admin = if !is_jwt_admin {
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT 1 FROM web_users WHERE username = $1 AND role = 'admin' LIMIT 1",
@@ -52,9 +44,9 @@ async fn post_reload(
         false
     };
 
-    if !is_plugin_secret && !is_jwt_admin && !is_web_admin {
+    if !is_jwt_admin && !is_web_admin {
         return Err(ServiceError::Unauthorized(
-            "admin privilege or valid plugin secret required".to_owned(),
+            "admin privilege required".to_owned(),
         ));
     }
 
