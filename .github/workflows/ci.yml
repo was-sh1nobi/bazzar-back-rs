@@ -78,28 +78,25 @@ jobs:
       - name: Build production release
         run: cargo build --release
 
-      - name: Install SeaORM CLI
-        run: cargo install sea-orm-cli --version 2.0.2
+      - name: Build migration binary
+        run: cargo build --release --manifest-path migration/Cargo.toml
 
       - name: Package production release
         run: |
           mkdir -p dist/src/data
           mkdir -p dist/deploy
-          mkdir -p dist/migration
 
           cp target/release/bazzar-back dist/
-          cp ~/.cargo/bin/sea-orm-cli dist/
+          cp migration/target/release/migration dist/
 
           cp src/data/items.json dist/src/data/
           cp .env.example dist/
-
-          cp -r migration/. dist/migration/
 
           cp deploy/bazzar.service dist/deploy/
           cp deploy/remote.sh dist/deploy/
 
           chmod +x dist/bazzar-back
-          chmod +x dist/sea-orm-cli
+          chmod +x dist/migration
           chmod +x dist/deploy/remote.sh
 
       - name: Deploy over SSH

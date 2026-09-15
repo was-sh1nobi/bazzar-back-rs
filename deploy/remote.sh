@@ -69,37 +69,35 @@ echo "All previously issued tokens are intentionally invalidated."
 
 echo "== [3/6] updating application files"
 
-# Stop existing service before replacing the running binary.
 if systemctl --user is-active --quiet "$APP_NAME.service" 2>/dev/null; then
     echo "Stopping existing $APP_NAME.service..."
     systemctl --user stop "$APP_NAME.service" || true
 fi
 
-# Copy release artifacts.
 cp -r "$SRC_DIR/." "$APP_DIR/"
 
 chmod +x "$APP_DIR/bazzar-back"
-chmod +x "$APP_DIR/sea-orm-cli"
+chmod +x "$APP_DIR/migration"
 
 echo "== [4/6] running database migrations"
-
-cd "$APP_DIR"
 
 set -a
 source "$APP_DIR/.env"
 set +a
 
-if [ ! -x "$APP_DIR/sea-orm-cli" ]; then
-    echo "ERROR: sea-orm-cli not found"
+if [ ! -x "$APP_DIR/migration" ]; then
+    echo "ERROR: migration binary not found"
     exit 1
 fi
 
-if [ ! -d "$APP_DIR/migration" ]; then
-    echo "ERROR: migrations directory not found"
+if [ -z "${DATABASE_URL:-}" ]; then
+    echo "ERROR: DATABASE_URL is not set"
     exit 1
 fi
 
-"$APP_DIR/sea-orm-cli" migrate up
+echo "Running database migrations..."
+
+"$APP_DIR/migration" up
 
 echo "Database migrations completed successfully."
 
@@ -112,13 +110,13 @@ fi
 
 cp "$SRC_DIR/deploy/bazzar.service" "$UNIT_FILE"
 
-# Keep user systemd manager alive after SSH logout/reboot.
 loginctl enable-linger "$(id -un)" >/dev/null 2>&1 || true
 
 systemctl --user daemon-reload
 systemctl --user enable "$APP_NAME.service"
 
 echo "Starting $APP_NAME.service..."
+
 systemctl --user restart "$APP_NAME.service"
 
 echo "== [6/6] verifying deployment"
@@ -145,7 +143,7 @@ echo "========================================"
 echo "Application : $APP_NAME"
 echo "Directory   : $APP_DIR"
 echo "Binary      : $APP_DIR/bazzar-back"
-echo "Migration   : $APP_DIR/sea-orm-cli"
+echo "Migration   : $APP_DIR/migration"
 echo "Service     : $APP_NAME.service"
 echo "Status      : $(systemctl --user is-active "$APP_NAME.service")"
 echo "========================================"
