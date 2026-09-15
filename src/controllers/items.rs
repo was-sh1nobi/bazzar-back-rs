@@ -8,7 +8,8 @@ use crate::services::items::items_owned::{
 };
 use crate::services::items::items_poll::get_items_poll_service;
 use crate::services::items::items_retrieve::get_items_retrieve_service;
-use actix_web::{HttpResponse, Scope, web};
+use crate::utils::rate_limit::check_jwt_rate_limit;
+use actix_web::{HttpRequest, HttpResponse, Scope, web};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 
@@ -83,10 +84,12 @@ pub struct ItemsOwnedInput {
 
 /// `GET /items/active` — caller's own AVAILABLE listings (Bearer JWT required).
 pub async fn get_items_active_controller(
+    req: HttpRequest,
     auth: Auth,
     query: web::Query<ItemsOwnedInput>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "items_active", 120, 60)?;
     let out =
         get_items_active_service(query.page, query.page_size, auth.player_uuid(), &db).await?;
     Ok(HttpResponse::Ok().json(out))
@@ -94,10 +97,12 @@ pub async fn get_items_active_controller(
 
 /// `GET /items/bought` — history rows the caller bought (Bearer JWT required).
 pub async fn get_items_bought_controller(
+    req: HttpRequest,
     auth: Auth,
     query: web::Query<ItemsOwnedInput>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "items_bought", 120, 60)?;
     let out =
         get_items_bought_service(query.page, query.page_size, auth.player_uuid(), &db).await?;
     Ok(HttpResponse::Ok().json(out))
@@ -105,10 +110,12 @@ pub async fn get_items_bought_controller(
 
 /// `GET /items/history` — everything the caller sold or bought (Bearer JWT required).
 pub async fn get_items_history_controller(
+    req: HttpRequest,
     auth: Auth,
     query: web::Query<ItemsOwnedInput>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "items_history", 120, 60)?;
     let out =
         get_items_history_service(query.page, query.page_size, auth.player_uuid(), &db).await?;
     Ok(HttpResponse::Ok().json(out))
@@ -119,10 +126,12 @@ pub async fn get_items_history_controller(
 /// validated server-side (guide §10.1/§14). Response matches the Node shape:
 /// `200 {success:true, message:"item created with id : <id>"}`.
 pub async fn post_items_add_controller(
+    req: HttpRequest,
     auth: Auth,
     body: web::Json<ItemsAddBody>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "items_add", 60, 60)?;
     let id = create_listing(body.into_inner(), &db, auth.player_uuid()).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "success": true,
@@ -135,10 +144,12 @@ pub async fn post_items_add_controller(
 /// transactional: PENDING claim → atomic deduct → SOLD → history → seller
 /// credit, COMMIT, or ROLLBACK on any failure.
 pub async fn post_items_buy_controller(
+    req: HttpRequest,
     auth: Auth,
     body: web::Json<ItemsBuyBody>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "items_buy", 60, 60)?;
     let out = items_buy_service(auth.player_uuid(), body.wanted_id, &db).await?;
     Ok(HttpResponse::Ok().json(out))
 }
@@ -146,10 +157,12 @@ pub async fn post_items_buy_controller(
 /// `POST /items/retrieve` — remove the caller's own AVAILABLE listing
 /// (guide §12.2). Like buy, seller identity comes only from JWT.
 pub async fn post_items_retrieve_controller(
+    req: HttpRequest,
     auth: Auth,
     body: web::Json<ItemsBuyBody>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "items_retrieve", 60, 60)?;
     let out = get_items_retrieve_service(&db, body.wanted_id, auth.player_uuid()).await?;
     Ok(HttpResponse::Ok().json(out))
 }

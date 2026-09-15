@@ -1,0 +1,14 @@
+[Unit]
+Description=Bazzar Auction House backend (Rust)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/bazzar
+EnvironmentFile=/var/www/bazzar/.env
+ExecStart=/var/www/bazzar/bazzar-back
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

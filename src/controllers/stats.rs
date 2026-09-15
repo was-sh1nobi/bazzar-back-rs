@@ -1,7 +1,8 @@
 use crate::auth::Auth;
 use crate::services::error::ServiceError;
 use crate::services::stats::get_stats_service;
-use actix_web::{HttpResponse, Scope, web};
+use crate::utils::rate_limit::check_jwt_rate_limit;
+use actix_web::{HttpRequest, HttpResponse, Scope, web};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 
@@ -14,10 +15,12 @@ pub struct StatsRequest {
     player: Option<String>,
 }
 pub async fn get_stats(
+    req: HttpRequest,
     auth: Auth,
     query: web::Query<StatsRequest>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "stats_read", 60, 60)?;
     let Some(player) = query.player.as_deref() else {
         return Err(ServiceError::MissingParam(
             "player query param is required".to_string(),

@@ -5,7 +5,7 @@
 //! `src/controllers/mod.rs`. Argon2 work is offloaded to the blocking pool
 //! so the async runtime is never stalled.
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, Set, Statement};
 use serde::Serialize;
 use tokio::task::spawn_blocking;
 
@@ -77,11 +77,32 @@ async fn find_user_by_uuid(
     uuid: &str,
     db: &DatabaseConnection,
 ) -> Result<Option<users::Model>, ServiceError> {
-    users::Entity::find()
-        .filter(users::Column::Playeruuid.eq(uuid))
-        .one(db)
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT playeruuid, username, balance, password_hash, created_at, banned FROM users WHERE playeruuid = $1 LIMIT 1",
+        [uuid.into()],
+    );
+    let row = db
+        .query_one(stmt)
         .await
-        .map_err(|e| internal("auth: database query failed", e))
+        .map_err(|e| internal("auth: database query failed", e))?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    Ok(Some(users::Model {
+        playeruuid: row
+            .try_get("", "playeruuid")
+            .map_err(|e| internal("auth: decode uuid", e))?,
+        username: row
+            .try_get("", "username")
+            .map_err(|e| internal("auth: decode username", e))?,
+        balance: row.try_get("", "balance").unwrap_or(0.0),
+        password_hash: row.try_get("", "password_hash").ok(),
+        created_at: row.try_get("", "created_at").ok(),
+        banned: row.try_get("", "banned").unwrap_or(0),
+    }))
 }
 
 /// Run a CPU-bound closure on the blocking thread pool so Argon2 never
@@ -153,6 +174,10 @@ pub async fn login_service(
     let user = find_user_by_uuid(&input.uuid, db)
         .await?
         .ok_or(ServiceError::NotFound)?;
+
+    if user.banned != 0 {
+        return Err(ServiceError::Unauthorized("account is banned".to_owned()));
+    }
 
     let Some(stored_hash) = user.password_hash.clone() else {
         return Err(ServiceError::InvalidCredentials);

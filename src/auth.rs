@@ -1,5 +1,7 @@
+use std::collections::HashSet;
 use std::future::{Ready, ready};
 use std::sync::LazyLock;
+use std::sync::RwLock;
 
 use actix_web::{Error, FromRequest, HttpRequest, dev::Payload, error::ErrorUnauthorized};
 use chrono::{Duration, Utc};
@@ -77,10 +79,17 @@ pub struct Claims {
     /// Optional unique token ID to prevent replay if you store/revoke JTIs
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jti: Option<String>,
+    /// Optional role (e.g. "admin" for privileged catalog reload)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 impl Claims {
     pub fn new(player_uuid: &str, username: &str) -> Self {
+        Self::new_with_role(player_uuid, username, None)
+    }
+
+    pub fn new_with_role(player_uuid: &str, username: &str, role: Option<String>) -> Self {
         let now = Utc::now();
         let exp = now + Duration::seconds(TTL_SECONDS);
         Self {
@@ -91,6 +100,7 @@ impl Claims {
             iss: ISSUER.to_owned(),
             aud: AUDIENCE.to_owned(),
             jti: Some(uuid::Uuid::new_v4().to_string()),
+            role,
         }
     }
 
@@ -122,6 +132,50 @@ pub fn build_token(
     username: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     create_jwt(player_uuid, username)
+}
+
+/// Build a signed HS256 JWT for `player_uuid` + `username` with an explicit `role`.
+pub fn create_jwt_with_role(
+    player_uuid: &str,
+    username: &str,
+    role: Option<String>,
+) -> Result<String, jsonwebtoken::errors::Error> {
+    let claims = Claims::new_with_role(player_uuid, username, role);
+    let header = Header::new(Algorithm::HS256);
+    encode(&header, &claims, &encoding_key())
+}
+
+static REVOKED_JTIS: LazyLock<RwLock<HashSet<String>>> =
+    LazyLock::new(|| RwLock::new(HashSet::new()));
+static REVOKED_USERS: LazyLock<RwLock<HashSet<String>>> =
+    LazyLock::new(|| RwLock::new(HashSet::new()));
+
+pub fn revoke_token(jti: &str) {
+    if let Ok(mut set) = REVOKED_JTIS.write() {
+        set.insert(jti.to_owned());
+    }
+}
+
+pub fn revoke_player(player_uuid: &str) {
+    if let Ok(mut set) = REVOKED_USERS.write() {
+        set.insert(player_uuid.to_owned());
+    }
+}
+
+pub fn is_revoked(jti: Option<&str>, player_uuid: &str) -> bool {
+    if let Ok(users) = REVOKED_USERS.read() {
+        if users.contains(player_uuid) {
+            return true;
+        }
+    }
+    if let Some(jti) = jti {
+        if let Ok(jtis) = REVOKED_JTIS.read() {
+            if jtis.contains(jti) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Verify the JWT signature + exp/iss/aud/alg. Returns `Claims` on success.
@@ -177,21 +231,34 @@ impl Auth {
         &self.claims
     }
 
+    pub fn role(&self) -> Option<&str> {
+        self.claims.role.as_deref()
+    }
+
     /// Verify a raw token string and construct `Auth` (useful outside extractor).
     pub fn from_token(token: &str) -> Result<Self, Error> {
-        verify_jwt(token)
-            .map(|claims| Self { claims })
-            .map_err(|e| {
-                // Do NOT leak internal error details to client; log internally if needed.
-                // Distinguish expiry for better UX without leaking signature info.
-                use jsonwebtoken::errors::ErrorKind;
-                match e.kind() {
-                    ErrorKind::ExpiredSignature => {
-                        ErrorUnauthorized(serde_json::json!({"success": false, "message": "token expired"}))
-                    }
-                    _ => ErrorUnauthorized(serde_json::json!({"success": false, "message": "invalid or expired token"})),
-                }
-            })
+        let claims = verify_jwt(token).map_err(|e| {
+            // Do NOT leak internal error details to client; log internally if needed.
+            // Distinguish expiry for better UX without leaking signature info.
+            use jsonwebtoken::errors::ErrorKind;
+            match e.kind() {
+                ErrorKind::ExpiredSignature => ErrorUnauthorized(
+                    serde_json::json!({"success": false, "message": "token expired"}),
+                ),
+                _ => ErrorUnauthorized(
+                    serde_json::json!({"success": false, "message": "invalid or expired token"}),
+                ),
+            }
+        })?;
+
+        if is_revoked(claims.jti.as_deref(), &claims.sub) {
+            return Err(ErrorUnauthorized(serde_json::json!({
+                "success": false,
+                "message": "token revoked"
+            })));
+        }
+
+        Ok(Self { claims })
     }
 }
 

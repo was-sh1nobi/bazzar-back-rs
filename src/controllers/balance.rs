@@ -1,11 +1,12 @@
 //! `GET /balance?player=uuid` — per guide §9.2 (no auth, plugin contract).
 
-use actix_web::{HttpResponse, Scope, web};
+use actix_web::{HttpRequest, HttpResponse, Scope, web};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 
 use crate::auth::Auth;
 use crate::services::{balance as balance_service, error::ServiceError};
+use crate::utils::rate_limit::check_jwt_rate_limit;
 
 pub fn balance_scope() -> Scope {
     web::scope("/balance")
@@ -20,10 +21,12 @@ struct BalanceQuery {
 }
 
 async fn get_balance(
+    req: HttpRequest,
     auth: Auth,
     query: web::Query<BalanceQuery>,
     db: web::Data<DatabaseConnection>,
 ) -> Result<HttpResponse, ServiceError> {
+    check_jwt_rate_limit(&auth, &req, "balance_read", 120, 60)?;
     let Some(player) = query.player.as_deref() else {
         return Err(ServiceError::MissingParam(
             "player query param is required".to_owned(),

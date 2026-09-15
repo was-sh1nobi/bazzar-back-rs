@@ -1,7 +1,7 @@
 //! Shop catalog, buy, and sell services (guide §10.2, §12.3, §13).
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 
 use crate::services::error::{ServiceError, internal};
@@ -68,6 +68,7 @@ pub struct ShopSellOutput {
 }
 
 const ITEMS_FILE_PATH: &str = "src/data/items.json";
+const MAX_SHOP_SELL_GAIN: f64 = 50_000.0;
 
 /// Seed shop_items from src/data/items.json if the table is empty (guide §13).
 pub async fn seed_shop_items_if_needed(db: &DatabaseConnection) -> Result<(), ServiceError> {
@@ -158,9 +159,14 @@ pub async fn reload_shop_catalog_service(db: &DatabaseConnection) -> Result<usiz
     let items = load_items_from_file()?;
     let total = items.len();
 
+    let tx = db
+        .begin()
+        .await
+        .map_err(|e| internal("shop reload: begin tx failed", e))?;
+
     let delete_stmt =
         Statement::from_sql_and_values(DbBackend::Postgres, "DELETE FROM shop_items", []);
-    db.execute(delete_stmt)
+    tx.execute(delete_stmt)
         .await
         .map_err(|e| internal("shop reload: delete failed", e))?;
 
@@ -178,10 +184,14 @@ pub async fn reload_shop_catalog_service(db: &DatabaseConnection) -> Result<usiz
                 item.sell.into(),
             ],
         );
-        db.execute(insert_stmt)
+        tx.execute(insert_stmt)
             .await
             .map_err(|e| internal("shop reload: insert failed", e))?;
     }
+
+    tx.commit()
+        .await
+        .map_err(|e| internal("shop reload: commit failed", e))?;
 
     Ok(total)
 }
@@ -345,6 +355,11 @@ pub async fn shop_sell_service(
     let gain = sell_price * amount as f64;
     if !gain.is_finite() || gain <= 0.0 {
         return Err(ServiceError::InvalidInput("not sellable".to_owned()));
+    }
+    if gain > MAX_SHOP_SELL_GAIN {
+        return Err(ServiceError::InvalidInput(
+            "sell gain exceeds maximum allowed (50000)".to_owned(),
+        ));
     }
 
     register_if_absent(db, uuid, None)

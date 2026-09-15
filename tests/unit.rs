@@ -1,9 +1,11 @@
 mod common;
 
+use bazzar_back::auth::{Auth, create_jwt_with_role, is_revoked, revoke_player, revoke_token};
 use bazzar_back::auth::{create_jwt, verify_jwt};
 use bazzar_back::services::error::ServiceError;
 use bazzar_back::services::items::version::{bump_version, get_version};
 use bazzar_back::utils::password_verifier::{hash_password, verify_password};
+use bazzar_back::utils::rate_limit::InMemoryRateLimiter;
 use bazzar_back::utils::validation::{
     StrNum, parse_listing_amount, parse_listing_price, validate_material, validate_name,
     validate_password, validate_uuid,
@@ -117,6 +119,10 @@ fn status_codes_match_spec() {
         ServiceError::Unauthorized("denied".into()).http_status(),
         401
     );
+    assert_eq!(
+        ServiceError::TooManyRequests("too many".into()).http_status(),
+        429
+    );
     assert_eq!(ServiceError::Internal("x".into()).http_status(), 500);
 }
 
@@ -142,6 +148,51 @@ fn jwt_roundtrip_build_and_verify() {
     let claims = verify_jwt(&token).expect("verify token");
     assert_eq!(claims.sub, "123e4567-e89b-12d3-a456-426614174000");
     assert_eq!(claims.username, "Steve");
+}
+
+#[test]
+fn jwt_with_role_roundtrip() {
+    let token = create_jwt_with_role(
+        "123e4567-e89b-12d3-a456-426614174000",
+        "AdminUser",
+        Some("admin".to_string()),
+    )
+    .expect("build admin token");
+    let claims = verify_jwt(&token).expect("verify token");
+    assert_eq!(claims.role.as_deref(), Some("admin"));
+}
+
+#[test]
+fn token_revocation_checks() {
+    let player_uuid = "999e4567-e89b-12d3-a456-426614174000";
+    let token = create_jwt(player_uuid, "RevokedPlayer").expect("token");
+    let auth = Auth::from_token(&token).expect("valid before revocation");
+    let jti = auth.claims.jti.clone().expect("has jti");
+
+    assert!(!is_revoked(Some(&jti), player_uuid));
+    revoke_token(&jti);
+    assert!(is_revoked(Some(&jti), player_uuid));
+    assert!(Auth::from_token(&token).is_err());
+
+    let token2 = create_jwt(player_uuid, "RevokedPlayer").expect("token2");
+    revoke_player(player_uuid);
+    assert!(is_revoked(None, player_uuid));
+    assert!(Auth::from_token(&token2).is_err());
+}
+
+#[test]
+fn rate_limiter_throttles_after_threshold() {
+    let limiter = InMemoryRateLimiter::new();
+    let key = "test_user_key";
+    let window = std::time::Duration::from_secs(60);
+
+    assert!(limiter.check_and_record(key, 2, window).is_ok());
+    assert!(limiter.check_and_record(key, 2, window).is_ok());
+    let err = limiter.check_and_record(key, 2, window).unwrap_err();
+    assert_eq!(err.http_status(), 429);
+
+    limiter.reset(key);
+    assert!(limiter.check_and_record(key, 2, window).is_ok());
 }
 
 #[test]

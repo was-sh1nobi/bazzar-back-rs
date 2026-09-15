@@ -28,6 +28,8 @@ pub enum ServiceError {
     InvalidCredentials,
     /// 401 — unauthorized action or identity mismatch
     Unauthorized(String),
+    /// 429 — rate limit exceeded
+    TooManyRequests(String),
     /// 400 — required request parameter missing; carries client-safe message
     MissingParam(String),
     /// 400 — request body validation failure; carries the client-safe message
@@ -59,6 +61,7 @@ impl ServiceError {
             Self::AlreadyRegistered | Self::MissingParam(_) | Self::InvalidInput(_) => 400,
             Self::NotFound | Self::ItemNotFound | Self::ShopItemNotFound => 404,
             Self::InvalidCredentials | Self::Unauthorized(_) => 401,
+            Self::TooManyRequests(_) => 429,
             Self::CorruptedHash
             | Self::InvalidItemPrice
             | Self::ReloadFailed
@@ -80,6 +83,7 @@ impl ServiceError {
             Self::ShopItemNotFound => "unknown shop item".to_owned(),
             Self::InvalidCredentials => "invalid password".to_owned(),
             Self::Unauthorized(msg) => msg.clone(),
+            Self::TooManyRequests(msg) => msg.clone(),
             Self::InvalidItemPrice => "invalid item price".to_owned(),
             Self::ReloadFailed => "reload failed".to_owned(),
             Self::CorruptedHash | Self::Internal(_) => "internal server error".to_owned(),
