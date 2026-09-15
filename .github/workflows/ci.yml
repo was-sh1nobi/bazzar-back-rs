@@ -2,20 +2,26 @@ name: CI/CD
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
   pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+
       - uses: Swatinem/rust-cache@v2
+
       - name: Check formatting
         run: cargo fmt --check
+
       - name: Run tests
         run: cargo test --verbose
 
@@ -23,8 +29,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: test
     runs-on: ubuntu-latest
+
     steps:
-      - name: "Guard: secrets present"
+      - name: Guard - secrets present
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -32,28 +39,69 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -eu
+
           echo "::debug::SSH_PRIVATE_KEY length=${#SSH_PRIVATE_KEY}"
-          [ -n "$SSH_PRIVATE_KEY" ] || { echo "::error::secret SSH_PRIVATE_KEY is not set"; exit 1; }
-          [ "$SSH_PRIVATE_KEY" != "LINUX PLACEHOLDER" ] || { echo "::error::SSH_PRIVATE_KEY is still the placeholder"; exit 1; }
-          [ -n "$SSH_HOST" ]      || { echo "::error::secret SSH_HOST is not set"; exit 1; }
-          [ -n "$SSH_USER" ]      || { echo "::error::secret SSH_USER is not set"; exit 1; }
-          if [ -n "$SSH_PORT" ] && ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]]; then
-            echo "::error::SSH_PORT must be numeric, got '$SSH_PORT'"; exit 1
+
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::secret SSH_PRIVATE_KEY is not set"
+            exit 1
           fi
+
+          if [ "$SSH_PRIVATE_KEY" = "LINUX PLACEHOLDER" ]; then
+            echo "::error::SSH_PRIVATE_KEY is still the placeholder"
+            exit 1
+          fi
+
+          if [ -z "$SSH_HOST" ]; then
+            echo "::error::SSH_HOST is not set"
+            exit 1
+          fi
+
+          if [ -z "$SSH_USER" ]; then
+            echo "::error::SSH_USER is not set"
+            exit 1
+          fi
+
+          if [ -n "$SSH_PORT" ] && ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::SSH_PORT must be numeric, got '$SSH_PORT'"
+            exit 1
+          fi
+
           echo "::notice::secrets present: host=$SSH_HOST user=$SSH_USER port=${SSH_PORT:-22}"
+
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
       - uses: Swatinem/rust-cache@v2
+
       - name: Build production release
         run: cargo build --release
+
+      - name: Install SeaORM CLI
+        run: cargo install sea-orm-cli --version 2.0.2
+
       - name: Package production release
         run: |
-          mkdir -p dist/src/data dist/deploy
+          mkdir -p dist/src/data
+          mkdir -p dist/deploy
+          mkdir -p dist/migrations
+
           cp target/release/bazzar-back dist/
+          cp ~/.cargo/bin/sea-orm-cli dist/
+
           cp src/data/items.json dist/src/data/
           cp .env.example dist/
+
+          cp -r migrations/. dist/migrations/
+
           cp deploy/bazzar.service dist/deploy/
           cp deploy/remote.sh dist/deploy/
+
+          chmod +x dist/bazzar-back
+          chmod +x dist/sea-orm-cli
+          chmod +x dist/deploy/remote.sh
+
       - name: Deploy over SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -62,26 +110,52 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -eu
-          LOG=/tmp/deploy.log; > "$LOG"
 
-          trap '{ set +e; cat "$LOG"; exit 1; }' ERR
+          LOG=/tmp/deploy.log
+          > "$LOG"
+
+          trap 'set +e; cat "$LOG"; exit 1' ERR
 
           echo "== [1/4] starting ssh-agent"
+
           eval "$(ssh-agent -s)" >/dev/null 2>&1
-          echo "$SSH_PRIVATE_KEY" | ssh-add - 2>"$LOG" 1>&2
+
+          echo "$SSH_PRIVATE_KEY" |
+            ssh-add - 2>"$LOG" 1>&2
+
           echo "   key loaded"
 
-          echo "== [2/4] pinning $SSH_HOST into known_hosts"
-          mkdir -p ~/.ssh
-          ssh-keyscan -p "${SSH_PORT:-22}" "$SSH_HOST" >> ~/.ssh/known_hosts 2>>"$LOG"
+          echo "== [2/4] preparing known_hosts"
 
-          echo "== [3/4] uploading production release to /tmp/bazzar-src"
-          scp -P "${SSH_PORT:-22}" -r \
+          mkdir -p ~/.ssh
+
+          ssh-keyscan \
+            -p "${SSH_PORT:-22}" \
+            "$SSH_HOST" \
+            >> ~/.ssh/known_hosts \
+            2>>"$LOG"
+
+          echo "== [3/4] uploading production release"
+
+          ssh \
+            -p "${SSH_PORT:-22}" \
+            "${SSH_USER}@${SSH_HOST}" \
+            "rm -rf /tmp/bazzar-src && mkdir -p /tmp/bazzar-src"
+
+          scp \
+            -P "${SSH_PORT:-22}" \
+            -r \
             dist/. \
-            "${SSH_USER}@${SSH_HOST}:/tmp/bazzar-src" 2>>"$LOG"
+            "${SSH_USER}@${SSH_HOST}:/tmp/bazzar-src" \
+            2>>"$LOG"
 
           echo "== [4/4] running remote deploy script"
-          ssh -o StrictHostKeyChecking=no -p "${SSH_PORT:-22}" "${SSH_USER}@${SSH_HOST}" \
-            "bash -s" < ./deploy/remote.sh 2>>"$LOG"
+
+          ssh \
+            -o StrictHostKeyChecking=yes \
+            -p "${SSH_PORT:-22}" \
+            "${SSH_USER}@${SSH_HOST}" \
+            "bash /tmp/bazzar-src/deploy/remote.sh" \
+            2>>"$LOG"
 
           echo "::notice::deploy to $SSH_USER@$SSH_HOST completed"
